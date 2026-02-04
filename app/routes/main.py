@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request
 from pydantic import ValidationError
 from app.models.user import LoginPayload
-from app.models.product import Product
+from app.models.product import Product, ProductDBModel
 from app import db # Importa a conexão do banco
 from bson import ObjectId # Para trabalhar com o ID do Mongo
 
@@ -47,11 +47,11 @@ def get_products():
 
     products_cursor = db.products.find()
     
-    products_list = []
-    for product in products_cursor:
-        # Converte o ObjectId para string para poder ser transformado em JSON
-        product['_id'] = str(product['_id'])
-        products_list.append(product)
+    # List comprehension poderosa que valida e serializa cada item numa linha só
+    products_list = [
+        ProductDBModel(**product).model_dump(by_alias=True, exclude_none=True) 
+        for product in products_cursor
+    ]
         
     return jsonify(products_list)
 
@@ -105,8 +105,9 @@ def get_product_by_id(product_id):
         product = db.products.find_one({"_id": oid})
         
         if product:
-            product['_id'] = str(product['_id'])
-            return jsonify(product)
+             # Usa o modelo para serializar corretamente
+            product_model = ProductDBModel(**product).model_dump(by_alias=True, exclude_none=True)
+            return jsonify(product_model)
         else:
             return jsonify({"error": f"Produto com o id: {product_id} - Não encontrado"}), 404
             
