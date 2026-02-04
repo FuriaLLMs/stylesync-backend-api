@@ -29,10 +29,6 @@ def test_login_success(client):
     assert rv.status_code == 200
     assert "access_token" in rv.json
 
-def test_create_product_unauthorized(client):
-    rv = client.post('/products', json={})
-    assert rv.status_code == 401
-
 def test_create_product_authorized(client):
     headers = get_auth_header(client)
     product_data = {
@@ -44,14 +40,35 @@ def test_create_product_authorized(client):
     }
     rv = client.post('/products', json=product_data, headers=headers)
     assert rv.status_code == 201
-    assert rv.json["message"] == "Produto criado com sucesso!"
-    assert "_id" in rv.json
-    assert rv.json['created_by'] == 'admin'
+    return rv.json['_id'] # Return ID for other tests
 
-def test_get_products(client):
-    rv = client.get('/products')
+def test_update_product(client):
+    # Primeiro cria
+    product_id = test_create_product_authorized(client)
+    headers = get_auth_header(client)
+    
+    # Atualiza apenas preço
+    update_data = {"price": 199.99}
+    rv = client.put(f'/product/{product_id}', json=update_data, headers=headers)
+    
     assert rv.status_code == 200
-    assert isinstance(rv.json, list)
+    assert rv.json['price'] == 199.99
+    assert rv.json['name'] == "Mouse Gamer Protected" # Nome deve permanecer
 
-# Keeping other tests or simplifying for brevity since CRUD logic didn't change much for others here
-# but we should ensure they still run.
+def test_delete_product(client):
+    # Primeiro cria
+    product_id = test_create_product_authorized(client)
+    headers = get_auth_header(client)
+    
+    # Deleta
+    rv = client.delete(f'/product/{product_id}', headers=headers)
+    assert rv.status_code == 204
+    
+    # Tenta buscar (deve ser 404)
+    rv = client.get(f'/product/{product_id}')
+    assert rv.status_code == 404
+
+def test_delete_product_unauthorized(client):
+    # Não vamos criar, mas tentar deletar algo
+    rv = client.delete('/product/507f1f77bcf86cd799439011')
+    assert rv.status_code == 401

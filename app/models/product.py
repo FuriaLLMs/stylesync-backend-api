@@ -20,6 +20,20 @@ class Product(BaseModel):
         arbitrary_types_allowed=True
     )
 
+class UpdateProduct(BaseModel):
+    """
+    Modelo para atualização parcial: todos os campos são opcionais.
+    """
+    name: Optional[str] = None
+    sku: Optional[str] = None
+    price: Optional[float] = None
+    description: Optional[str] = None
+    stock: Optional[int] = None
+
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True
+    )
+
 class ProductDBModel(Product):
     """
     Classe especializada para serializar o retorno do banco (ObjectId -> str)

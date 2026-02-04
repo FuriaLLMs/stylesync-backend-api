@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request, current_app
 from pydantic import ValidationError
 from app.models.user import LoginPayload
-from app.models.product import Product, ProductDBModel
+from app.models.product import Product, ProductDBModel, UpdateProduct
 from app import db
 from bson import ObjectId
 import jwt # Importação nova
@@ -90,13 +90,61 @@ def get_product_by_id(product_id):
     except Exception as e:
         return jsonify({"error": f"Erro ao buscar o produto: {e}"}), 400
 
+# RF: O sistema deve permitir a atualizacao de um unico produto e produto existente
 @main_bp.route('/product/<product_id>', methods=['PUT'])
-def update_product(product_id):
-    return jsonify({"message": f"Esta é a rota de atualizacao do produto com o id {product_id}"})
+@token_required # <--- Protegido com Token
+def update_product(token_data, product_id):
+    if db is None: return jsonify({"error": "Database not connected"}), 500
 
+    try:
+        # 1. Converte ID e valida dados parciais
+        oid = ObjectId(product_id)
+        raw_data = request.get_json()
+        update_data = UpdateProduct(**raw_data)
+        
+        # 2. Atualiza no MongoDB usando $set
+        # exclude_unset=True garante que só campos enviados sejam atualizados
+        update_result = db.products.update_one(
+            {"_id": oid},
+            {"$set": update_data.model_dump(exclude_unset=True)}
+        )
+        
+        # 3. Verifica se achou o produto
+        if update_result.matched_count == 0:
+            return jsonify({"error": "Produto não encontrado"}), 404
+            
+        # 4. Retorna o produto atualizado
+        updated_product = db.products.find_one({"_id": oid})
+        # Serializa com ProductDBModel para garantir formato correto do ID
+        product_model = ProductDBModel(**updated_product).model_dump(by_alias=True, exclude_none=True)
+        
+        return jsonify(product_model)
+
+    except ValidationError as e:
+        return jsonify({"error": e.errors()}), 400
+    except Exception as e:
+        return jsonify({"error": f"Erro ao atualizar: {e}"}), 400
+
+# RF: O sistema deve permitir a delecao de um unico produto e produto existente
 @main_bp.route('/product/<product_id>', methods=['DELETE'])
-def delete_product(product_id):
-    return jsonify({"message": f"Esta é a rota de deleção do produto com o id {product_id}"})
+@token_required # <--- Protegido com Token
+def delete_product(token_data, product_id):
+    if db is None: return jsonify({"error": "Database not connected"}), 500
+
+    try:
+        oid = ObjectId(product_id)
+        
+        # Deleta o documento
+        delete_result = db.products.delete_one({"_id": oid})
+        
+        if delete_result.deleted_count == 0:
+            return jsonify({"error": "Produto não encontrado"}), 404
+            
+        # Retorna 204 No Content (sucesso sem corpo de resposta)
+        return "", 204
+        
+    except Exception as e:
+        return jsonify({"error": f"Erro ao deletar: {e}"}), 400
 
 @main_bp.route('/sales/upload', methods=['POST'])
 def upload_sales():
