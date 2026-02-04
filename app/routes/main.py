@@ -1,6 +1,9 @@
 from flask import Blueprint, jsonify, request
 from pydantic import ValidationError
 from app.models.user import LoginPayload
+from app.models.product import Product
+from app import db # Importa a conexão do banco
+from bson import ObjectId # Para trabalhar com o ID do Mongo
 
 main_bp = Blueprint('main_bp', __name__)
 
@@ -37,26 +40,89 @@ def login():
 # RF: O sistema deve permitir listagem de todos os produtos
 @main_bp.route('/products', methods=['GET'])
 def get_products():
-    return jsonify({"message": "Esta é a rota de listagem dos produtos"})
+    # Busca todos os documentos na coleção 'products'
+    # TODO: Error handling if db is None?
+    if db is None:
+         return jsonify({"error": "Database not connected"}), 500
+
+    products_cursor = db.products.find()
+    
+    products_list = []
+    for product in products_cursor:
+        # Converte o ObjectId para string para poder ser transformado em JSON
+        product['_id'] = str(product['_id'])
+        products_list.append(product)
+        
+    return jsonify(products_list)
 
 # RF: O sistema deve permitir a criacao de um novo produto
 @main_bp.route('/products', methods=['POST'])
 def create_product():
-    return jsonify({"message": "Esta é a rota de criação de produto"})
+    if db is None:
+         return jsonify({"error": "Database not connected"}), 500
+
+    try:
+        # 1. Captura os dados JSON enviados
+        raw_data = request.get_json()
+        
+        # 2. Valida os dados usando o modelo Pydantic
+        # Se faltar campo obrigatório ou tipo errado, o Pydantic lança ValidationError
+        product = Product(**raw_data)
+        
+        # 3. Prepara os dados para salvar (converte para dicionário Python)
+        product_dict = product.model_dump()
+        
+        # 4. Insere no MongoDB
+        result = db.products.insert_one(product_dict)
+        
+        # 5. Retorna sucesso com o ID gerado pelo banco
+        # Importante converter ObjectId para string antes de serializar o próprio dicionário se formos retorná-lo
+        product_dict['_id'] = str(result.inserted_id)
+
+        return jsonify({
+            "message": "Produto criado com sucesso!",
+            "_id": str(result.inserted_id), 
+            "data": product_dict
+        }), 201 # Status 201 Created
+        
+    except ValidationError as e:
+        return jsonify({"error": e.errors()}), 400
+        
+    except Exception as e:
+        return jsonify({"error": f"Erro ao criar produto: {e}"}), 500
 
 # RF: O sistema deve permitir a visualizacao dos detalhes de um unico produto
-@main_bp.route('/product/<int:product_id>', methods=['GET'])
+@main_bp.route('/product/<product_id>', methods=['GET'])
 def get_product_by_id(product_id):
-    return jsonify({"message": f"Esta é a rota de visualizacao do detalhe do id do produto {product_id}"})
+    if db is None:
+         return jsonify({"error": "Database not connected"}), 500
+
+    try:
+        # Converte a string da URL para ObjectId
+        oid = ObjectId(product_id)
+        
+        # Busca um único documento pelo _id
+        product = db.products.find_one({"_id": oid})
+        
+        if product:
+            product['_id'] = str(product['_id'])
+            return jsonify(product)
+        else:
+            return jsonify({"error": f"Produto com o id: {product_id} - Não encontrado"}), 404
+            
+    except Exception as e:
+        return jsonify({"error": f"Erro ao buscar o produto: {e}"}), 400
 
 # RF: O sistema deve permitir a atualizacao de um unico produto e produto existente
-@main_bp.route('/product/<int:product_id>', methods=['PUT'])
+@main_bp.route('/product/<product_id>', methods=['PUT'])
 def update_product(product_id):
+    # TODO Update for mongo
     return jsonify({"message": f"Esta é a rota de atualizacao do produto com o id {product_id}"})
 
 # RF: O sistema deve permitir a delecao de um unico produto e produto existente
-@main_bp.route('/product/<int:product_id>', methods=['DELETE'])
+@main_bp.route('/product/<product_id>', methods=['DELETE'])
 def delete_product(product_id):
+    # TODO Update for mongo
     return jsonify({"message": f"Esta é a rota de deleção do produto com o id {product_id}"})
 
 # RF: O sistema deve permitir a importacao de vendas através de um arquivo

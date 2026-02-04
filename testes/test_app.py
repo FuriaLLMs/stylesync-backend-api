@@ -32,24 +32,43 @@ def test_login_invalid_credentials(client):
 def test_login_missing_field(client):
     rv = client.post('/login', json={"username": "admin"})
     assert rv.status_code == 400
-    # Valida se contem estrutura de erro do Pydantic
     assert "error" in rv.json
 
 def test_get_products(client):
     rv = client.get('/products')
     assert rv.status_code == 200
-    assert rv.json == {"message": "Esta é a rota de listagem dos produtos"}
+    # Agora retorna uma lista de produtos, não uma mensagem
+    assert isinstance(rv.json, list) 
+    # Podemos verificar se a lista não está vazia se tivermos garantias do seed
+    # assert len(rv.json) > 0 
 
 def test_create_product(client):
-    rv = client.post('/products')
-    assert rv.status_code == 200
-    assert rv.json == {"message": "Esta é a rota de criação de produto"}
+    product_data = {
+        "name": "Mouse Gamer",
+        "sku": "MOUSE-TEST-001",
+        "price": 250.00,
+        "stock": 15,
+        "description": "Mouse de teste"
+    }
+    rv = client.post('/products', json=product_data)
+    assert rv.status_code == 201
+    assert rv.json["message"] == "Produto criado com sucesso!"
+    assert "_id" in rv.json
+    assert rv.json["data"]["sku"] == "MOUSE-TEST-001"
 
-def test_get_product_by_id(client):
-    product_id = 1
+def test_get_product_by_id_not_found(client):
+    # Testando com um ObjectId válido mas inexistente (provavelmente)
+    fake_id = "507f1f77bcf86cd799439011" 
+    rv = client.get(f'/product/{fake_id}')
+    # Esperamos 404 pois esse ID não deve existir, ou 200 se existir. 
+    # O teste original usava int=1, que agora falha pois não é ObjectId valido (400)
+    assert rv.status_code == 404
+
+def test_get_product_invalid_id_format(client):
+    product_id = "invalid-id"
     rv = client.get(f'/product/{product_id}')
-    assert rv.status_code == 200
-    assert rv.json == {"message": f"Esta é a rota de visualizacao do detalhe do id do produto {product_id}"}
+    assert rv.status_code == 400
+    assert "error" in rv.json
 
 def test_update_product(client):
     product_id = 1
